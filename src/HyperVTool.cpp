@@ -136,11 +136,10 @@ int wmain(int argc, const wchar_t** argv)
 	}
 
 	// Get the data from the query.
-	IWbemClassObject* pclsObj = nullptr;
-	ULONG uReturn = 0;
-
 	while (pEnumerator)
 	{
+		IWbemClassObject* pclsObj = nullptr;
+		ULONG uReturn = 0;
 		hRes = pEnumerator->Next(WBEM_INFINITE, 1, &pclsObj, &uReturn);
 		if (FAILED(hRes) || uReturn == 0)
 			break;
@@ -148,22 +147,37 @@ int wmain(int argc, const wchar_t** argv)
 		// Get the value of the Name property.
 		VARIANT vtProp;
 		hRes = pclsObj->Get(L"Name", 0, &vtProp, 0, 0);
-		printf("VM Name : %ls\n", vtProp.bstrVal);
-		VariantClear(&vtProp);
+		if (FAILED(hRes))
+			break;
+		printf("VM GUID : %ls\n", vtProp.bstrVal);
 
 		// Save the state of the VM here.
 		// Use the RequestStateChange method to save the VM state.
 		// This is where you'd use Msvm_VirtualSystemManagementService methods to save the VM state.
+		IWbemClassObject* pClass = nullptr;
+		hRes = pSvc->GetObject(bstr_t("Msvm_ComputerSystem"), 0, nullptr, &pClass, nullptr);
+		if (FAILED(hRes) || pClass == nullptr)
+		{
+			printf("Can't get Msvm_ComputerSystem object. Error code = 0x%08X\n", hRes);
+			break;
+		}
+
 		IWbemClassObject* pInParamsDefinition = nullptr;
-		hRes = pSvc->GetObject(bstr_t("Msvm_ComputerSystem"), 0, nullptr, &pInParamsDefinition, nullptr);
+		hRes = pClass->GetMethod(L"RequestStateChange", 0, &pInParamsDefinition, nullptr);
+		if (FAILED(hRes) || pInParamsDefinition == nullptr)
+		{
+			printf("Can't get RequestStateChange method. Error code = 0x%08X\n", hRes);
+			break;
+		}
 
 		IWbemClassObject* pClassInstance = nullptr;
-		hRes = pInParamsDefinition->GetMethod(L"RequestStateChange", 0, &pClassInstance, nullptr);
+		hRes = pInParamsDefinition->SpawnInstance(0, &pClassInstance);
+		if (FAILED(hRes) || pClassInstance == nullptr)
+		{
+			printf("Can't execute SpawnInstance method. Error code = 0x%08X\n", hRes);
+			break;
+		}
 
-		IWbemClassObject* pOutParams = nullptr;
-		hRes = pClassInstance->SpawnInstance(0, &pInParamsDefinition);
-
-		VARIANT varCommand;
 		enum {
 			START = 2,
 			STOP = 3,
@@ -171,6 +185,8 @@ int wmain(int argc, const wchar_t** argv)
 			PAUSE = 32769,
 			RESUME = 32770
 		};
+		VARIANT varCommand;
+		VariantInit(&varCommand);
 		varCommand.vt = VT_I4;
 		if (_wcsicmp(command, L"start") == 0)
 			varCommand.lVal = START;
@@ -179,20 +195,32 @@ int wmain(int argc, const wchar_t** argv)
 		else if (_wcsicmp(command, L"save") == 0)
 			varCommand.lVal = SAVE_STATE;
 
-		hRes = pInParamsDefinition->Put(L"RequestedState", 0, &varCommand, 0);
-		hRes = pSvc->ExecMethod(vtProp.bstrVal, bstr_t("RequestStateChange"), 0, nullptr, pInParamsDefinition, &pOutParams, NULL);
+		hRes = pClassInstance->Put(L"RequestedState", 0, &varCommand, 0);
+		if (FAILED(hRes)) {
+			printf("Failed to request VM state. Error code = 0x%08X\n", hRes);
+			break;
+		}
+
+		IWbemClassObject* pOutParams = nullptr;
+		hRes = pSvc->ExecMethod(vtProp.bstrVal, bstr_t(L"RequestStateChange"),
+			0, nullptr, pClassInstance, &pOutParams, NULL);
 
 		if (FAILED(hRes))
 			printf("Failed to %ls VM%ls. Error code = 0x%08X\n", command,
-				   (varCommand.lVal == SAVE_STATE) ? L" state" : L"", hRes);
+				(varCommand.lVal == SAVE_STATE) ? L" state" : L"", hRes);
 		else
 			printf("VM state changed successfully.\n");
+		if (pOutParams)
+			pOutParams->Release();
 
 		VariantClear(&vtProp);
 
-		if (pInParamsDefinition) pInParamsDefinition->Release();
-		if (pClassInstance) pClassInstance->Release();
-		if (pOutParams) pOutParams->Release();
+		if (pClassInstance)
+			pClassInstance->Release();
+		if (pInParamsDefinition)
+			pInParamsDefinition->Release();
+		if (pClass)
+			pClass->Release();
 
 		pclsObj->Release();
 	}
