@@ -200,18 +200,19 @@ int wmain(int argc, const wchar_t** argv)
 			printf("Failed to request VM state. Error code = 0x%08X\n", hRes);
 			break;
 		}
+		VARIANT varName;
+		VariantInit(&varName);
+		varName.vt = VT_BSTR;
+		varName.bstrVal = bstr_t(L"root\\virtualization\\v2:Msvm_ComputerSystem.CreationClassName=\"Msvm_ComputerSystem\",Name=\"492E063D-F2B7-4A73-A915-2F9FB9C4DC58\"");
 
-		IWbemClassObject* pOutParams = nullptr;
-		hRes = pSvc->ExecMethod(vtProp.bstrVal, bstr_t(L"RequestStateChange"),
-			0, nullptr, pClassInstance, &pOutParams, NULL);
+		hRes = pSvc->ExecMethod(varName.bstrVal/*vtProp.bstrVal*/, bstr_t(L"RequestStateChange"),
+								0, nullptr, pClassInstance, nullptr, 0);
 
 		if (FAILED(hRes))
 			printf("Failed to %ls VM%ls. Error code = 0x%08X\n", command,
 				(varCommand.lVal == SAVE_STATE) ? L" state" : L"", hRes);
 		else
 			printf("VM state changed successfully.\n");
-		if (pOutParams)
-			pOutParams->Release();
 
 		VariantClear(&vtProp);
 
