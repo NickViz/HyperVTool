@@ -104,7 +104,7 @@ int wmain(int argc, const wchar_t** argv)
     if (FAILED(hRes) || pSvc == nullptr)
     {
         printf("Failed to connect to WMI server. Error code = 0x%08X\n", hRes);
-        goto EXIT1;
+        goto EXIT2;
     }
     // printf("Connected to %ls WMI namespace\n", wmi_namespace);
 
